@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=1.0">
+    <title>Species Identification</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { display: flex; }
+        .left-panel, .right-panel { flex: 1; padding: 10px; }
+        .characteristics-list, .character-states { height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
+        .character-item { cursor: pointer; padding: 5px; white-space: normal; width: 100%; box-sizing: border-box; }
+        .selected-characteristics { margin-top: 20px; }
+        .selected-characteristics-title { font-weight: bold; }
+        .character-item, .value-item, .selected-characteristic-item { cursor: pointer; padding: 5px; }
+        .character-item:hover, .value-item:hover, .selected-characteristic-item:hover { background-color: #f0f0f0; }
+        .selected { background-color: #d0e0ff; }
+        .clear-buttons { margin-top: 10px; }
+        .top-right-image { width: 200px; }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        .modal-content {
+            background-color: black; 
+            color: white; 
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 600px;
+        }
+        .close {
+            position: absolute;
+            top: 15px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover, .close:focus {
+            color: #bbb;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .result { margin-bottom: 10px; }
+        .green-button {
+            background-color: rgb(63, 175, 63);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .red-button {
+            background-color: rgb(231, 69, 69);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .green-button:hover {
+            background-color:rgb(63, 175, 63);
+        }
+        .red-button:hover {
+            background-color: rgb(231, 69, 69);
+        }
+    </style>
+</head>
+<body>
+    
+    <h1>Bayesian Interactive Key for Linyphiid Species
+        <button id="info-button" class="green-button">Information</button>
+    </h1>
+    <div class="container">
+        <div class="left-panel">
+            <h2>Select Characters <button id="help-button">Help</button></h2>
+            <div class="characteristics-list" id="characteristics-container">
+            </div>
+            <label for="error-rate">Error Rate:</label>
+            <input type="text" id="error-rate" value="0.05">
+            <br><br>
+            <button id="rank-characteristics" class="green-button">Rank Characters</button>
+            <button id="rank-species" class="green-button">Rank Species</button>
+            <div class="selected-characteristics">
+                <div class="selected-characteristics-title">Selected Characteristics:</div>
+                <div id="selected-characteristics-list"></div>
+            </div>
+            <div class="clear-buttons">
+                <button id="clear-selected" class="red-button">Clear Selected</button>
+                <button id="clear-all" class="red-button">Clear All</button>
+            </div>
+        </div>
+        <div class="right-panel">
+            <h2>Character States</h2>
+            <div class="character-states" id="character-values-container">
+            </div>
+            <button id="select-value" class="green-button">Select</button>
+            <h2>Species</h2>
+            <div id="results-container" style="max-height: 400px; overflow-y: auto;">
+            </div>
+        </div>
+    </div>
+
+    <div id="imageModal" class="modal">
+        <span class="close">&times;</span>
+        <div id="modal-content">
+            <div id="caption" style="color: white; padding-bottom: 10px;"></div>
+            <img id="modalImage" src="" alt="Help Image" style="max-width: 100%; height: auto;">
+            <div id="images-container"></div>
+        </div>
+    </div>
+    <div id="infoModal" class="modal">
+        <span class="close">&times;</span>
+        <div class="modal-content">
+            <h2>Information</h2>
+            <p>This is a detailed description of how to use the species identification tool.</p>
+            <p><strong>Select Characters:</strong> Choose the characters you want to use for identifying species.</p>
+            <p><strong>Help button:</strong> Click on a character and this button for visual aids in the modal.</p>
+            <p><strong>Select States:</strong> Choose the corresponding state(s) for the selected character.</p>
+            <p><strong>Rank Characters:</strong> This button will rank the selected characters based on their usefulness - how much that character will split up the species on average. A lower score indicates a more useful character.</p>
+            <p><strong>Error Rate:</strong> This feature distinguishes between novices and experts. Novices should use an error rate of around 0.2, with experts using the default 0.05.</p>
+            <p><strong>Rank Species:</strong> After selecting characters, use this button to rank species based on the selected criteria.</p>
+            <p><strong>Select a Species:</strong> Click on a species name in the list to view information in the modal.</p>
+            <p><strong>Clear Selected:</strong> Removes selected characteristics from the list. Press the command key to select multiple.</p>
+            <p><strong>Clear All:</strong> Clears all selected characteristics and resets the list.</p>
+        </div>
+    </div>
+    <div id="speciesModal" class="modal">
+        <span class="close" id="species-close">&times;</span>
+        <div class="modal-content">
+            <h2>Species Details</h2>
+            <div id="species-details"></div>
+        </div>
+    </div>
+</body>
+</html>
+
+
+    <script>
+        $(document).ready(function() {
+            var selectedCharacteristics = {};
+            var selectedCharacter = "";
+            var selectedValues = [];
+
+            // load initial species names
+            function loadInitialSpeciesNames() {
+                $.get("/get_initial_species_names", function(data) {
+                    var speciesList = data.map(function(species) {
+                        return `<div class="species-item" data-species="${species}">${species}</div>`;
+                    }).join("");
+                    $("#results-container").html(speciesList);                   
+                });
+            }
+
+            // load characteristics
+            function loadCharacteristics() {
+                $.get("/get_characters", function(data) {
+                    displayCharacteristics(data);
+                });
+            }
+
+            // Display characteristics 
+            function displayCharacteristics(data) {
+                var listItems = data.map(function(character) {
+                    return `<div class="character-item" data-character="${character}">${character}</div>`;
+                }).join("");
+                $("#characteristics-container").html(listItems);
+            }
+
+            // load character values based on selected character
+            function loadCharacterValues(character) {
+            $.get(`/get_character_values/${character}`, function(data) {
+                console.log("Received data:", data); 
+                if (Array.isArray(data) && data.length === 0) {
+                    var inputBox = `<input type="text" id="typable-value" placeholder="Enter value">`;
+                    $("#character-values-container").html(inputBox);
+                } else {
+                    var listItems = data.map(function(value) {
+                        return `<div class="value-item" data-value="${value}">${value}</div>`;
+                    }).join("");
+                $("#character-values-container").html(listItems);
+            }
+        });
+    }
+            // Selecting a characteristic
+            $(document).on("click", ".character-item", function() {
+                $(".character-item").removeClass("selected");
+                $(this).addClass("selected");
+                var character = $(this).data("character");
+                selectedCharacter = character;
+                loadCharacterValues(character);
+                selectedValues = []; 
+            });
+
+            // Selecting a corresponding value
+            $(document).on("click", ".value-item", function(event) {
+                event.preventDefault();
+                let $item = $(this);
+                let value = $item.data("value");
+
+                if ($item.hasClass("selected")) {
+                    $item.removeClass("selected");
+                    selectedValues = selectedValues.filter(v => v !== value);
+                } else {
+                    $item.addClass("selected");
+                    selectedValues.push(value);
+                }
+            });
+
+            // Select character and value
+            $("#select-value").click(function() {
+            if (selectedCharacter) {
+                var typableValue = $("#typable-value").val();
+                if (typableValue) {
+                    selectedValues = [typableValue];
+                }
+
+            if (selectedValues.length > 0) {
+                selectedCharacteristics[selectedCharacter] = selectedValues;
+                $(`.character-item[data-character='${selectedCharacter}']`).remove();
+                $("#character-values-container").empty();
+                updateSelectedCharacteristics();
+                selectedCharacter = null;
+                selectedValues = [];
+            } else {
+                alert("Please select a characteristic and at least one value.");
+                    }
+                } else {
+                    alert("Please select a characteristic.");
+                }
+            });
+
+            // update selected characteristics
+            function updateSelectedCharacteristics() {
+                var selectedItems = Object.keys(selectedCharacteristics).map(function(character) {
+                    return `<div class="selected-characteristic-item" data-character="${character}">${character} = ${selectedCharacteristics[character].join(", ")}</div>`;
+                }).join("");
+                $("#selected-characteristics-list").html(selectedItems);
+            }
+
+            // ranking characteristics
+            function rankCharacteristics() {
+                var errorRate = parseFloat($("#error-rate").val());
+                $.ajax({
+                    url: "/rank_characteristics",
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ 
+                        observed_characters: selectedCharacteristics, 
+                        error_rate: errorRate,
+                        rank_error_rate: 0  
+                    }),
+                    success: function(data) {
+                        displayRankedCharacteristics(data);
+                    },
+                    dataType: "json",
+                    error: function(xhr, status, error) {
+                        console.error("Error in AJAX request:", error);
+                    }
+                });
+            }
+
+            // display ranked characteristics after ranking
+            function displayRankedCharacteristics(data) {
+                var listItems = data.map(function(item) {
+                    return `<div class="character-item" data-character="${item[0]}">${item[0]} (Usefulness Score: ${item[1].toFixed(2)})</div>`;
+                }).join("");
+                $("#characteristics-container").html(listItems);
+            }
+
+            // rank species based on selected characteristics
+            function rankAndDisplaySpecies() {
+                var errorRate = parseFloat($("#error-rate").val());
+                $.ajax({
+                    url: "/rank_species",
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ observed_characters: selectedCharacteristics, error_rate: errorRate }),
+                    success: function(data) {
+                        var results = data.map(function(item) {
+                            return `<div class="result">${item.species}, Probability: ${item.probability.toFixed(4)}</div>`;
+                        }).join("");
+                        $("#results-container").html(results);
+                    },
+                    dataType: "json",
+                    error: function(xhr, status, error) {
+                        console.error("Error in AJAX request:", error);
+                    }
+                });
+            }
+
+            $(document).on("click", "#results-container .species-item", function() {
+                var speciesName = $(this).data("species");
+                fetchSpeciesDetails(speciesName);
+            });
+
+            $(document).on("click", "#results-container .result", function() {
+                var fullText = $(this).text();
+                var speciesName = fullText.split(', Probability')[0].trim(); 
+                fetchSpeciesDetails(speciesName);
+            });
+
+            function fetchSpeciesDetails(speciesName) {
+                $.ajax({
+                    url: `/get_species_details/${speciesName}`,
+                    type: "GET",
+                    success: function(data) {
+                        displaySpeciesDetails(data);
+                        $("#speciesModal").css("display", "block");
+                    },
+                    error: function(xhr, status, error) {
+                        console.error("Error in AJAX request:", error);
+                    }
+                });
+            }
+
+            // display species details in the modal
+            function displaySpeciesDetails(data) {
+                var details = Object.keys(data).map(function(character) {
+                    return `<div><strong>${character}:</strong> ${data[character]}</div>`;
+                }).join("");
+                $("#species-details").html(details);
+            }
+
+            $(document).on("click", "#species-close, .modal", function(event) {
+                if (event.target === this || event.target.id === "species-close") {
+                    $("#speciesModal").css("display", "none");
+                }
+            });
+
+            $(document).on("click", ".modal-content", function(event) {
+                event.stopPropagation();
+            });
+
+            $(document).on("click", "#help-button", function() {
+                var selectedCharacterText = $(".character-item.selected").text().trim();
+
+                if (selectedCharacterText !== "") {
+                    $("#images-container").empty();
+                    $("#modalImage").attr("src", "");
+                    switch (selectedCharacterText) {
+                        case "Sex":
+                            $("#modalImage").attr("src", "https://www.burkemuseum.org/sites/default/files/images/biology/arachnology-entomology/spider-myths/General%20Fallacies/sexes.jpg");
+                            $("#caption").html("Male<br>Female");
+                            break;
+                        case "Maxillae: appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Gnathocoxae.jpg");
+                            $("#caption").html("1. unremarkable<br>2. one or more teeth/tubercles");
+                            break;
+                        case "Width of sternum between coxae IV: relative to width of coxae IV (d)":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Sternum.jpg");
+                            $("#caption").html("distinctly greater than d<br>distinctly less than d<br>equal to d");
+                            break;
+                        case "Length of prosoma [mm]":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Pros_length.jpg");
+                            $("#caption").html("");
+                            break;
+                        case "Length of prosoma by range [mm]":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Pros_length.jpg");
+                            $("#caption").html("");
+                            break;
+                        case "Length of femur I : relative to prosoma":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Length_femur.jpg");
+                            $("#caption").html("equal in length<br>longer than prosoma<br>shorter than prosoma");
+                            break;
+                        case "Numbers of dorsal spines on tibia I, II, III, IV: tibial spine formula":
+                            $("#modalImage").attr("src", "https://research.amnh.org/iz/blackrock2/images/linyphiidae/leg_1r_tenuiph_zebra_small_abc.jpg");
+                            $("#caption").html("0000<br>0011<br>1111<br>2211<br>2221<br>2222");
+                            break;
+                        case "Prosoma: appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Prosoma_special_char.jpg");
+                            $("#caption").html("1. inconspicuous<br>2. margin with teeth<br>3. with pits (dorsally)<br>4. with conspicuous hairs/spines");
+                            break;
+                        case "Fovea clearly visible as darkened groove":
+                            $("#modalImage").attr("src", "https://www.bumblebee.org/invertebrates/images/FemaleSpider.jpg");
+                            $("#caption").html("Yes<br>No");
+                            break;   
+                        case "Opisthosoma: appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Opisthosoma_app.jpg");
+                            $("#caption").html("1. unicolourus, inconspicuous<br>2. patterned<br>3. with scutum<br>4. conspicuously hairy");
+                            break;        
+                        case "Dorsal spines on femur I: count":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Opisthosoma_app.jpg");
+                            $("#caption").html("1. none<br>2. one<br>3. multiple");
+                            break;         
+                        case "Posterior eye row: form":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Eyes_posterior.jpg");
+                            $("#caption").html("1. straight<br>2. procurved<br>3. recurved");
+                            break;        
+                        case "Posterior median eye (PME) separation: relative to diameter (d)":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/PMEyes.jpg");
+                            $("#caption").html("1. distinctly less than d<br>2. equal to d<br>3. distinctly greater than d");
+                            break;          
+                        case "Headregion of male: appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Head_region.jpg");
+                            $("#caption").html("1. inconspicuous<br>2. sulci present<br>3. with lobe (simple)<br>4. complex<br> with horns/tufts");
+                            break;           
+                        case "Eyes: appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Eyes.jpg");
+                            $("#caption").html("1. normal<br>2. reduced");
+                            break;           
+                        case "Anterior median eyes: size relative to anterior lateral eyes ALE":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/AMEyes.jpg");
+                            $("#caption").html("1. distinctly smaller than ALE<br>2. about the same as ALE<br>3.distinctly larger than ALE");
+                            break;           
+                        case "Prolateral spines on femur I: count":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/LegI_spines.jpg");
+                            $("#caption").html("1. none<br>2. one<br>3.multiple");
+                            break;
+                        case "Prolateral spines on tibia I: count":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/LegI_spines.jpg");
+                            $("#caption").html("1. none<br>2. one<br>3.multiple");
+                            break;         
+                        case "Anterior cheliceral teeth: appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Cheliceral_teeth.jpg");
+                            $("#caption").html("1. unremarkable in size<br>2. conspicuously large");
+                            break;                                            
+                        case "Conspicuous structures on chelicerae: appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Chelicerae_char.jpg");
+                            $("#caption").html("1. none<br>2. apophyses/teeth-like processes/ tubercles<br>3. spines");
+                            break;                          
+                        case "Maxillae: appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Gnathocoxae.jpg");
+                            $("#caption").html("1. unremarkable<br>2. one or more teeth/tubercles");
+                            break;    
+                        case "Sternum: appearance":
+                            $("#modalImage").attr("src", "https://www.welokee.nl/spiders/en/glossary_imgs/sternum.jpg");
+                            $("#caption").html("1. smooth<br>2. rugose<br>3. pitted");
+                            break;                         
+                        case "Sternum: extends between coxae IV":
+                            $("#modalImage").attr("src", "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Spider_external_anatomy_en.png/330px-Spider_external_anatomy_en.png");
+                            $("#caption").html("1. no<br>2. yes");
+                            break;    
+                        case "Position of trichobothrium on metatarsus I (TmI): relative to metatarsus":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/trMI.jpg");
+                            $("#caption").html("");
+                            break;    
+                        case "Position of TmI by range: relative to metatarsus":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/trMI.jpg");
+                            $("#caption").html("");
+                            break;        
+                        case "Metatarsus IV dorsally: presence of trichobothrium (TmIV)":
+                            $("#modalImage").attr("src", "https://www.asianarachnology.com/wp-content/uploads/2023/01/term-trichobothrium.jpg");
+                            $("#caption").html("1. trichobothrium absent<br> 2. trichobothrium present (seen in photo)");
+                            break;             
+                        case "Dorsal spines on metatarsus I: count":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/LegI_spines.jpg");
+                            $("#caption").html("1. none<br> 2. one<br>3. multiple");
+                            break;           
+                        case "Tibia IV: number of dorsal spines":
+                            $("#modalImage").attr("src", "https://research.amnh.org/iz/blackrock2/images/linyphiidae/leg_1r_tenuiph_zebra_small_abc.jpg");
+                            $("#caption").html("1. none<br> 2. one<br>3. multiple");
+                            break;     
+                        case "Tibia I-II ventrally: presence of spines":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Tibial_spines.jpg");
+                            $("#caption").html("1. no spines<br> 2. stout spines in two rows");
+                            break;    
+                        case "Male pedipalp: femur appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Palpal_femur.jpg");
+                            $("#caption").html("1. unremarkable<br> 2. conspicuous");
+                            break;  
+                        case "Male pedipalp: patella appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Patella_m.jpg");
+                            $("#caption").html("1. unremarkable<br> 2. with apophyses<br>3. with conspicuous spines (single or tufts)<br>4. conspicuously swollen");
+                            break;            
+                            case "Male pedipalp: tibia appearance":
+                $("#caption").html("1. unremarkable<br>2. with simple apophysis<br>3. with multiple, simple apophyses<br>4. with complex apophysis<br>5. with multiple, complex apophyses<br>6. with one or more spines<br>7. with tufts of hair or spines");
+                var images = [
+                    { num: 2, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/TiApo_2.jpg" },
+                    { num: 3, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/TiApo_3.jpg" },
+                    { num: 4, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/TiApo_4.jpg" },
+                    { num: 5, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/TiApo_5.jpg" },
+                    { num: 6, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/TiApo_6.jpg" },
+                    { num: 7, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/TiApo_7.jpg" }
+                ];
+
+                images.forEach(function(image) {
+                    $("#images-container").append(`
+                        <div style="margin-bottom: 10px; text-align: center;">
+                            <span style="display: block; color: white; font-size: 18px; margin-bottom: 5px;"><strong>${image.num}.</strong></span>
+                            <img src="${image.url}" style="max-width: 100%; height: auto;">
+                        </div>
+                    `);
+                });
+                break;
+                        case "Male pedipalp: cymbium appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Cymbium.jpg");
+                            $("#caption").html("1. simple<br> 2. with dorsal projections/conical elevations<br>3. margin with notches/bulges");
+                            break;    
+                        case "Male pedipalp: paracymbium form":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Paracymbium.jpg");
+                            $("#caption").html("1. simple<br> 2. complex");
+                            break;                                       
+                        case "Male pedipalp: branches of paracymbium presence of teeth":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Paracymbium_branch.jpg");
+                            $("#caption").html("1. teeth absent<br> 2. teeth present");
+                            break;  
+                        case "Male pedipalp: embolus appearance":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Embolus.jpg");
+                            $("#caption").html("1. unremarkable<br> 2. conspicuous, circular<br>3. conspicuous, curled");
+                            break;             
+                        case "Male pedipalp: lamella characteristica presence":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Lamella_characteristica.jpg");
+                            $("#caption").html("1. absent<br> 2. conspicuous");
+                            break;          
+                        case "Female palp: claw presence":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Female_palp.jpg");
+                            $("#caption").html("1. not present/inconspicuous<br> 2. conspicuous");
+                            break;         
+                            case "Epigyne: appearance":
+                    $("#caption").html("1. unremarkable<br>2. with atrium/cavity<br>3. with septum/medial structure<br>4. with lateral plates<br>5. with scape (from anterior margin)<br>6. with parmula (from posterior margin)");
+                    // Add images with corresponding numbers
+                    var epigyneImages = [
+                        { num: 1, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/Epigyne_1.jpg" },
+                        { num: 2, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/Epigyne_2.jpg" },
+                        { num: 3, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/Epigyne_3.jpg" },
+                        { num: 4, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/Epigyne_4.jpg" },
+                        { num: 5, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/Epigyne_5.jpg" },
+                        { num: 6, url: "https://araneae.nmbe.ch/betakey/character_help/char_img/Epigyne_6.jpg" }
+                    ];
+                    epigyneImages.forEach(function(image) {
+                        $("#images-container").append(`
+                            <div style="margin-bottom: 10px; text-align: center;">
+                                <span style="display: block; color: white; font-size: 18px; margin-bottom: 5px;"><strong>${image.num}.</strong></span>
+                                <img src="${image.url}" style="max-width: 100%; height: auto;">
+                            </div>
+                        `);
+                    });
+                    
+                    break;
+                        case "Epigyne: form":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Epigyne_form.jpg");
+                            $("#caption").html("1. flat<br> 2. protrudes");
+                            break;             
+                        case "Epigyne: seminal receptacles":
+                            $("#modalImage").attr("src", "https://araneae.nmbe.ch/betakey/character_help/char_img/Receptacula_vis.jpg");
+                            $("#caption").html("1. underlying structures (e.g., seminal receptacles) not visible<br> 2. underlying structures (e.g., seminal receptacles) visible");
+                            break;                                                                                                                                                                                                                                                                            
+                        default:
+                            alert("No specific help available for the selected characteristic.");
+                            return;
+                    }
+                    
+                    $("#imageModal").css("display", "block");
+                } else {
+                    alert("Please select a character first.");
+                }
+            });
+
+            $(document).on("click", ".close", function() {
+                $("#imageModal").css("display", "none");
+            });
+
+            // Clearing selected characteristics
+            $(document).on("click", ".selected-characteristic-item", function(event) {
+                var ctrlPressed = event.metaKey || event.ctrlKey; // Check if Ctrl/Cmd key is pressed
+
+                if (ctrlPressed) {
+                    $(this).toggleClass("selected");
+                } else {
+                    $(".selected-characteristic-item").removeClass("selected");
+                    $(this).addClass("selected");
+                }
+            });
+            $("#clear-selected").click(function() {
+                $(".selected-characteristic-item.selected").each(function() {
+                    var character = $(this).data("character");
+                    var characterItem = `<div class="character-item" data-character="${character}">${character}</div>`;
+                    $("#characteristics-container").append(characterItem);
+                    delete selectedCharacteristics[character];
+                });
+                if (Object.keys(selectedCharacteristics).length === 0) {
+                    $("#selected-characteristics-list").empty();
+                    loadCharacteristics();
+                    loadInitialSpeciesNames();
+                }                            
+                updateSelectedCharacteristics();
+            });
+
+            var modal = document.getElementById("infoModal");
+            var btn = document.getElementById("info-button");
+            var span = document.getElementsByClassName("close")[0];
+
+            btn.onclick = function() {
+                modal.style.display = "block";
+            }
+
+            span.onclick = function() {
+                modal.style.display = "none";
+            }
+
+            window.onclick = function(event) {
+                if (event.target == modal) {
+                    modal.style.display = "none";
+                }
+            }
+
+            //clearing all characteristics
+            $("#clear-all").click(function() {
+                $.post("/reset_probabilities", function() {
+                location.reload();
+                }).fail(function() {
+                alert("Failed to reset server state.");
+                });
+            });
+            // ranking species
+            $("#rank-species").click(function() {
+                rankAndDisplaySpecies();
+            });
+            // ranking characteristics
+            $("#rank-characteristics").click(function() {
+                rankCharacteristics();
+            });
+            // Load initial species names when the page loads
+            loadInitialSpeciesNames();
+            // Load characteristics when the page loads
+            loadCharacteristics();
+        });
+    </script>
+</body>
+</html>
