@@ -272,28 +272,22 @@ def adjust_similarity_matrices(similarity_matrices, error_rate, user_values):
         if not isinstance(matrix, pd.DataFrame):
             raise TypeError(f"Expected pd.DataFrame, got {type(matrix)} for character {character}")
 
-        # Store original matrix
         original_matrices[character] = matrix.copy()
-
-        # Directly adjust the matrix for error rates
+        # adjust the matrix for error rates
         unique_values = character_matrix[character].dropna().astype(str).str.split(';').explode().unique()
         n_unique_values = len(unique_values)
         n_user_values = len(user_values.get(character, []))
-
         # Compute non-match adjustment
         if n_unique_values > n_user_values:
             non_match_adjustment = error_rate / (n_unique_values - n_user_values)
         else:
             non_match_adjustment = error_rate
-
         # Apply error rate adjustment directly
         adjusted_matrix = matrix.applymap(
             lambda x: x + non_match_adjustment if x < 1 else x - error_rate
         )
         adjusted_matrix = adjusted_matrix.clip(lower=0)
-
         adjusted_matrices[character] = adjusted_matrix
-
     return adjusted_matrices, original_matrices
 
 
@@ -301,7 +295,6 @@ def categorical_character_likelihood(character_matrix, character, values, error_
     num_species = character_matrix.shape[0]
     likelihood = np.ones(num_species)
 
-    # Retrieve both adjusted and original similarity matrices for the character
     adjusted_matrices, original_matrices = adjust_similarity_matrices(similarity_matrices, error_rate, {character: values})
     similarity_matrix = adjusted_matrices.get(character)
     original_matrix = original_matrices.get(character)
@@ -313,7 +306,6 @@ def categorical_character_likelihood(character_matrix, character, values, error_
     if not isinstance(values, list):
         values = [values]
     
-    # Initialise similarity scores
     similarity_scores = np.zeros(num_species)
     
     # Handle multiple values
@@ -351,6 +343,10 @@ def categorical_character_likelihood(character_matrix, character, values, error_
         lowest_value = original_matrix.min().min()  # Lowest value in the original matrix
         dummy_likelihood = (highest_value + lowest_value) / 2
         likelihood[dummy_idx] = dummy_likelihood
+
+    total_likelihood = likelihood.sum()
+    if total_likelihood > 0:
+        likelihood /= total_likelihood
     
     return likelihood
 
